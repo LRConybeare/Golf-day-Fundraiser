@@ -851,8 +851,14 @@ const firebaseConfig = {
       pop: entry.pop,
       date: entry.date
     };
-    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
-      .catch(() => {});
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
+    } catch (emailErr) {
+      console.error('EmailJS error:', emailErr);
+      showToast('Registration saved, but email notification failed. Please notify the organiser manually.', true);
+      resetForm();
+      return;
+    }
 
     resetForm();
     showToast('✓ Registration submitted successfully!');
