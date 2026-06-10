@@ -599,17 +599,30 @@ const firebaseConfig = {
   let entriesCollection = null;
   let firestoreUnsubscribe = null;
   let entries = [];
+  let takenHoles = []; // kept in sync by a lightweight separate listener
 
   try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
     entriesCollection = db.collection('golfEntries');
-    startLiveListener();
+    startHolesListener();  // lightweight — only downloads hole numbers
+    startLiveListener();   // full entries — used by admin table
   } catch (e) {
     // Firebase not configured — fall back to localStorage
     console.warn('Firebase not configured, using localStorage fallback.');
     entries = JSON.parse(localStorage.getItem('golfEntries') || '[]');
     buildHoleOptions();
+  }
+
+  // Listens to a single tiny document: {taken: [5, 12, 7]}
+  // Updates hole availability on ALL devices instantly without downloading image data.
+  function startHolesListener() {
+    db.collection('meta').doc('holesSponsor').onSnapshot(doc => {
+      takenHoles = doc.exists ? (doc.data().taken || []) : [];
+      buildHoleOptions();
+    }, err => {
+      console.warn('Holes listener error:', err);
+    });
   }
 
   function startLiveListener() {
@@ -618,7 +631,6 @@ const firebaseConfig = {
       .orderBy('id', 'asc')
       .onSnapshot(snapshot => {
         entries = snapshot.docs.map(doc => ({ _docId: doc.id, ...doc.data() }));
-        buildHoleOptions();
         if (document.getElementById('tab-admin').classList.contains('active')) {
           renderTable();
         }
@@ -723,6 +735,9 @@ const firebaseConfig = {
 
   // ── Holes ─────────────────────────────────────────────────────
   function getTakenHoles() {
+    // When Firebase is active, use the dedicated lightweight listener
+    if (db) return takenHoles;
+    // localStorage fallback
     return entries.filter(e => e.hole).map(e => parseInt(e.hole));
   }
 
@@ -854,6 +869,13 @@ const firebaseConfig = {
     if (entriesCollection) {
       try {
         await entriesCollection.add(entry);
+        // Update the lightweight holes document so all devices see the change instantly
+        if (entry.hole) {
+          await db.collection('meta').doc('holesSponsor').set(
+            { taken: firebase.firestore.FieldValue.arrayUnion(parseInt(entry.hole)) },
+            { merge: true }
+          );
+        }
       } catch (e) {
         showToast('Error saving entry. Please try again.', true);
         console.error(e);
@@ -949,6 +971,8 @@ const firebaseConfig = {
         const batch = db.batch();
         snapshot.docs.forEach(doc => batch.delete(doc.ref));
         await batch.commit();
+        // Reset the holes document so all devices see all holes as available again
+        await db.collection('meta').doc('holesSponsor').set({ taken: [] });
       } catch (e) {
         showToast('Error clearing entries.', true);
         console.error(e);
