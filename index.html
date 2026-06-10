@@ -601,7 +601,7 @@ const firebaseConfig = {
   let entries = [];
 
   try {
-    firebase.initializeApp(FIREBASE_CONFIG);
+    firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
     entriesCollection = db.collection('golfEntries');
     startLiveListener();
