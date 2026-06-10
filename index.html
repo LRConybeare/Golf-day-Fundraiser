@@ -628,15 +628,32 @@ const firebaseConfig = {
   function startLiveListener() {
     if (firestoreUnsubscribe) return;
     firestoreUnsubscribe = entriesCollection
-      .orderBy('id', 'asc')
       .onSnapshot(snapshot => {
-        entries = snapshot.docs.map(doc => ({ _docId: doc.id, ...doc.data() }));
+        entries = snapshot.docs
+          .map(doc => ({ _docId: doc.id, ...doc.data() }))
+          .sort((a, b) => a.id - b.id);
         if (document.getElementById('tab-admin').classList.contains('active')) {
           renderTable();
         }
       }, err => {
-        console.warn('Firestore listen error:', err);
+        console.warn('Firestore live listener error:', err);
       });
+  }
+
+  // Called every time the admin tab opens — fetches entries directly
+  // so the table never depends solely on the async onSnapshot timing.
+  async function fetchAndRenderEntries() {
+    if (!entriesCollection) { renderTable(); return; }
+    try {
+      const snap = await entriesCollection.get();
+      entries = snap.docs
+        .map(doc => ({ _docId: doc.id, ...doc.data() }))
+        .sort((a, b) => a.id - b.id);
+    } catch (err) {
+      console.error('Failed to fetch entries:', err);
+      showToast('Could not load entries — check Firestore rules are not expired.', true);
+    }
+    renderTable();
   }
 
   let uploadedFile = null;
@@ -729,7 +746,7 @@ const firebaseConfig = {
       });
     }
 
-    if (tab === 'admin') renderTable();
+    if (tab === 'admin') fetchAndRenderEntries();
     if (tab === 'register') buildHoleOptions();
   }
 
