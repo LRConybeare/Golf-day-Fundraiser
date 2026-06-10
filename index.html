@@ -10,7 +10,6 @@
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <style>
   :root {
     --green-dark: #1a3a2a;
@@ -597,7 +596,6 @@ const firebaseConfig = {
 
   // ── Firebase init ─────────────────────────────────────────────
   let db = null;
-  let storage = null;
   let entriesCollection = null;
   let firestoreUnsubscribe = null;
   let entries = [];
@@ -605,7 +603,6 @@ const firebaseConfig = {
   try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
-    storage = firebase.storage();
     entriesCollection = db.collection('golfEntries');
     startLiveListener();
   } catch (e) {
@@ -781,6 +778,15 @@ const firebaseConfig = {
     document.getElementById('breakdown').textContent = breakdown;
   }
 
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
   function handleFileUpload(input) {
     uploadedFile = input.files[0];
     const area = document.getElementById('upload-area');
@@ -823,22 +829,22 @@ const firebaseConfig = {
       hole: hole,
       total: total,
       pop: uploadedFile ? uploadedFile.name : 'Not uploaded',
-      popUrl: '',
+      popBase64: '',
+      popType: '',
       date: new Date().toLocaleDateString('en-ZA')
     };
 
-    // Upload proof of payment to Firebase Storage
-    if (uploadedFile && storage) {
+    // Convert proof of payment to base64 for storage in Firestore
+    if (uploadedFile) {
       const submitBtn = document.querySelector('.btn-primary');
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Uploading...';
+      submitBtn.textContent = 'Processing...';
       try {
-        const ref = storage.ref(`proofs/${entry.id}_${uploadedFile.name}`);
-        await ref.put(uploadedFile);
-        entry.popUrl = await ref.getDownloadURL();
-      } catch (uploadErr) {
-        console.error('File upload error:', uploadErr);
-        showToast('File upload failed. Entry will be saved without the document.', true);
+        entry.popBase64 = await fileToBase64(uploadedFile);
+        entry.popType = uploadedFile.type;
+      } catch (readErr) {
+        console.error('File read error:', readErr);
+        showToast('Could not read file. Entry will be saved without the document.', true);
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Registration';
@@ -917,8 +923,8 @@ const firebaseConfig = {
         <td><span class="badge">${e.fourballs} ball${e.fourballs>1?'s':''}</span></td>
         <td>${e.hole ? `<span class="badge gold">Hole ${e.hole}</span>` : '<span style="color:var(--text-muted);font-size:0.82rem;">—</span>'}</td>
         <td><strong>R${e.total.toLocaleString()}</strong></td>
-        <td style="font-size:0.78rem;">${e.popUrl
-          ? `<a href="${e.popUrl}" target="_blank" style="color:var(--green-mid);font-weight:600;text-decoration:none;">View ↗</a>`
+        <td style="font-size:0.78rem;">${e.popBase64
+          ? `<a href="data:${e.popType};base64,${e.popBase64}" download="${e.pop}" target="_blank" style="color:var(--green-mid);font-weight:600;text-decoration:none;">View ↗</a>`
           : `<span style="color:var(--text-muted);">${e.pop}</span>`
         }</td>
         <td style="font-size:0.78rem;color:var(--text-muted);">${e.date}</td>
