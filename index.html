@@ -7,6 +7,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
   :root {
     --green-dark: #1a3a2a;
@@ -269,6 +272,73 @@
   .sponsor-toggle { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
   .sponsor-toggle label { font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-family: Arial, sans-serif; }
 
+  /* ADMIN LOGIN MODAL */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 500;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-box {
+    background: white;
+    border-radius: 14px;
+    padding: 2.2rem 2rem;
+    width: 340px;
+    text-align: center;
+    box-shadow: 0 8px 48px rgba(0,0,0,0.28);
+  }
+  .modal-box .modal-icon { font-size: 2.8rem; margin-bottom: 0.6rem; }
+  .modal-box h2 { color: var(--green-dark); font-size: 1.25rem; margin-bottom: 0.4rem; }
+  .modal-box p { color: var(--text-muted); font-size: 0.85rem; font-family: Arial, sans-serif; margin-bottom: 1.4rem; line-height: 1.5; }
+  .modal-box input[type=password] {
+    width: 100%; padding: 0.75rem 1rem;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-size: 1rem; margin-bottom: 1rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  .modal-box input[type=password]:focus { border-color: var(--green-light); }
+  .modal-btn-row { display: flex; gap: 0.8rem; }
+  .modal-error {
+    color: #c0392b; font-size: 0.82rem;
+    font-family: Arial, sans-serif;
+    margin-top: 0.8rem; min-height: 1.1rem;
+  }
+
+  /* LIVE INDICATOR */
+  .live-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #27ae60;
+    margin-right: 6px;
+    animation: pulse 1.6s ease-in-out infinite;
+    vertical-align: middle;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+  .live-label {
+    font-size: 0.75rem; font-family: Arial, sans-serif;
+    color: #27ae60; font-weight: 600;
+    display: flex; align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  /* ADMIN LOGIN LINK (footer) */
+  .admin-login-link {
+    display: block;
+    text-align: center;
+    padding: 1.2rem;
+    font-size: 0.78rem;
+    font-family: Arial, sans-serif;
+    color: var(--border);
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.2s;
+  }
+  .admin-login-link:hover { color: var(--text-muted); }
+
   @media (max-width: 580px) {
     .field-row { grid-template-columns: 1fr; }
     .panel { padding: 1.2rem; }
@@ -286,9 +356,9 @@
 </div>
 
 <div class="tabs">
-  <button class="tab-btn active" onclick="showTab('register')">Registration</button>
-  <button class="tab-btn" onclick="showTab('admin')">Admin / Entries</button>
-  <button class="tab-btn" onclick="showTab('qr')">QR Code</button>
+  <button class="tab-btn active" onclick="showTab('register', event)">Registration</button>
+  <button class="tab-btn" id="admin-tab-btn" style="display:none;" onclick="showTab('admin', event)">Admin / Entries</button>
+  <button class="tab-btn" id="qr-tab-btn" style="display:none;" onclick="showTab('qr', event)">QR Code</button>
 </div>
 
 <!-- REGISTRATION PANEL -->
@@ -358,9 +428,9 @@
   <div class="total-box">
     <div>
       <div class="label">Total Amount Due</div>
-      <div class="breakdown" id="breakdown">1 × 4-ball @ R2,500</div>
+      <div class="breakdown" id="breakdown">1 × 4-ball @ R3,000</div>
     </div>
-    <div class="amount" id="total-display">R2,500</div>
+    <div class="amount" id="total-display">R3,000</div>
   </div>
 
   <div class="section-label">Banking Details</div>
@@ -394,6 +464,8 @@
 
 <!-- ADMIN PANEL -->
 <div class="panel" id="tab-admin">
+  <div class="live-label"><span class="live-dot"></span> Live — updates automatically as registrations come in</div>
+
   <div class="stats-row" id="stats-row">
     <div class="stat-card">
       <div class="stat-label">Total Entries</div>
@@ -416,6 +488,7 @@
   <div style="display:flex; gap:0.8rem; flex-wrap:wrap; margin-bottom:1rem;">
     <button class="btn btn-gold" onclick="exportExcel()">⬇ Export to Excel</button>
     <button class="btn btn-danger" onclick="clearAllEntries()">🗑 Clear All Entries</button>
+    <button class="btn btn-outline" onclick="adminLogout()" style="margin-left:auto;">🔒 Lock Admin</button>
   </div>
 
   <div class="table-wrap">
@@ -470,10 +543,45 @@
   </div>
 </div>
 
+<!-- ADMIN LOGIN MODAL -->
+<div class="modal-overlay" id="admin-modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-icon">🔐</div>
+    <h2>Admin Access</h2>
+    <p>Enter the admin password to view entries and manage the event.</p>
+    <input type="password" id="admin-pw-input" placeholder="Password"
+      onkeydown="if(event.key==='Enter') checkAdminPassword()">
+    <div class="modal-btn-row">
+      <button class="btn btn-outline" style="flex:1;" onclick="closeAdminModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="checkAdminPassword()">Enter</button>
+    </div>
+    <div class="modal-error" id="admin-modal-error"></div>
+  </div>
+</div>
+
+<!-- Subtle admin login trigger at page bottom -->
+<div class="admin-login-link" id="admin-login-trigger" onclick="openAdminModal()" title="Admin login">· · ·</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-  // EmailJS config — fill these in after creating your free EmailJS account
+  // ── Admin password ────────────────────────────────────────────
+  // Change this to your preferred password
+  const ADMIN_PASSWORD = 'StTherese2025';
+
+  // ── Firebase Config ───────────────────────────────────────────
+  // Replace with your Firebase project settings:
+  // Firebase Console → Project Settings → Your apps → Web app → Config
+  const FIREBASE_CONFIG = {
+    apiKey:            "YOUR_API_KEY",
+    authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId:         "YOUR_PROJECT_ID",
+    storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId:             "YOUR_APP_ID"
+  };
+
+  // ── EmailJS config ────────────────────────────────────────────
   const EMAILJS_PUBLIC_KEY  = 'AeXGpB8gpJAhnippv';
   const EMAILJS_SERVICE_ID  = 'service_9q1ag7q';
   const EMAILJS_TEMPLATE_ID = 'template_a9brdus';
@@ -483,9 +591,134 @@
   const HOLE_PRICE = 3500;
   const TOTAL_HOLES = 18;
 
-  let entries = JSON.parse(localStorage.getItem('golfEntries') || '[]');
+  // ── Firebase init ─────────────────────────────────────────────
+  let db = null;
+  let entriesCollection = null;
+  let firestoreUnsubscribe = null;
+  let entries = [];
+
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    entriesCollection = db.collection('golfEntries');
+    startLiveListener();
+  } catch (e) {
+    // Firebase not configured — fall back to localStorage
+    console.warn('Firebase not configured, using localStorage fallback.');
+    entries = JSON.parse(localStorage.getItem('golfEntries') || '[]');
+    buildHoleOptions();
+  }
+
+  function startLiveListener() {
+    if (firestoreUnsubscribe) return;
+    firestoreUnsubscribe = entriesCollection
+      .orderBy('id', 'asc')
+      .onSnapshot(snapshot => {
+        entries = snapshot.docs.map(doc => ({ _docId: doc.id, ...doc.data() }));
+        buildHoleOptions();
+        if (document.getElementById('tab-admin').classList.contains('active')) {
+          renderTable();
+        }
+      }, err => {
+        console.warn('Firestore listen error:', err);
+      });
+  }
+
   let uploadedFile = null;
 
+  // ── Admin auth ────────────────────────────────────────────────
+  let pendingTab = null;
+
+  function isAdminAuthenticated() {
+    return sessionStorage.getItem('adminAuth') === 'true';
+  }
+
+  function openAdminModal(targetTab) {
+    pendingTab = targetTab || 'admin';
+    document.getElementById('admin-modal').style.display = 'flex';
+    document.getElementById('admin-pw-input').value = '';
+    document.getElementById('admin-modal-error').textContent = '';
+    setTimeout(() => document.getElementById('admin-pw-input').focus(), 50);
+  }
+
+  function closeAdminModal() {
+    document.getElementById('admin-modal').style.display = 'none';
+    pendingTab = null;
+  }
+
+  function checkAdminPassword() {
+    const input = document.getElementById('admin-pw-input').value;
+    if (input === ADMIN_PASSWORD) {
+      sessionStorage.setItem('adminAuth', 'true');
+      closeAdminModal();
+      showAdminTabs();
+      // Navigate to whichever tab triggered the login
+      const target = pendingTab || 'admin';
+      pendingTab = null;
+      _activateTab(target);
+    } else {
+      const err = document.getElementById('admin-modal-error');
+      err.textContent = 'Incorrect password. Please try again.';
+      document.getElementById('admin-pw-input').value = '';
+      document.getElementById('admin-pw-input').focus();
+    }
+  }
+
+  function showAdminTabs() {
+    document.getElementById('admin-tab-btn').style.display = '';
+    document.getElementById('qr-tab-btn').style.display = '';
+    document.getElementById('admin-login-trigger').style.display = 'none';
+  }
+
+  function adminLogout() {
+    sessionStorage.removeItem('adminAuth');
+    document.getElementById('admin-tab-btn').style.display = 'none';
+    document.getElementById('qr-tab-btn').style.display = 'none';
+    document.getElementById('admin-login-trigger').style.display = 'block';
+    // Return to registration tab
+    _activateTab('register');
+    showToast('Admin session locked.');
+  }
+
+  // Restore session if already authenticated (e.g. page refresh)
+  if (isAdminAuthenticated()) {
+    showAdminTabs();
+  }
+
+  // ── Tab navigation ────────────────────────────────────────────
+  function showTab(tab, event) {
+    if ((tab === 'admin' || tab === 'qr') && !isAdminAuthenticated()) {
+      openAdminModal(tab);
+      return;
+    }
+    _activateTab(tab, event);
+  }
+
+  function _activateTab(tab, event) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+
+    // Highlight the matching tab button
+    const btn = document.getElementById(tab === 'admin' ? 'admin-tab-btn'
+                                       : tab === 'qr'    ? 'qr-tab-btn'
+                                       : null);
+    if (btn) {
+      btn.classList.add('active');
+    } else if (event && event.target) {
+      event.target.classList.add('active');
+    } else {
+      // find by text fallback
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        if (b.textContent.toLowerCase().includes(tab)) b.classList.add('active');
+      });
+    }
+
+    if (tab === 'admin') renderTable();
+    if (tab === 'register') buildHoleOptions();
+  }
+
+  // ── Holes ─────────────────────────────────────────────────────
   function getTakenHoles() {
     return entries.filter(e => e.hole).map(e => parseInt(e.hole));
   }
@@ -526,6 +759,7 @@
     updateTotal();
   }
 
+  // ── Total ─────────────────────────────────────────────────────
   function updateTotal() {
     const fb = parseInt(document.getElementById('fourballs').value) || 1;
     document.getElementById('players-out').value = fb * 4;
@@ -566,7 +800,8 @@
     return true;
   }
 
-  function submitEntry() {
+  // ── Submit ────────────────────────────────────────────────────
+  async function submitEntry() {
     if (!validateForm()) return;
     const fb = parseInt(document.getElementById('fourballs').value) || 1;
     const sponsoring = document.querySelector('input[name=sponsor]:checked')?.value === 'yes';
@@ -584,9 +819,21 @@
       pop: uploadedFile ? uploadedFile.name : 'Not uploaded',
       date: new Date().toLocaleDateString('en-ZA')
     };
-    entries.push(entry);
-    saveEntries();
-    renderTable();
+
+    if (entriesCollection) {
+      try {
+        await entriesCollection.add(entry);
+      } catch (e) {
+        showToast('Error saving entry. Please try again.', true);
+        console.error(e);
+        return;
+      }
+    } else {
+      // localStorage fallback
+      entries.push(entry);
+      localStorage.setItem('golfEntries', JSON.stringify(entries));
+      renderTable();
+    }
 
     // Send email notification
     const templateParams = {
@@ -602,7 +849,8 @@
       date: entry.date
     };
     emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
-      .catch(() => {}); // silent fail — entry still saved locally
+      .catch(() => {});
+
     resetForm();
     showToast('✓ Registration submitted successfully!');
   }
@@ -621,14 +869,11 @@
     updateTotal();
   }
 
-  function saveEntries() {
-    localStorage.setItem('golfEntries', JSON.stringify(entries));
-  }
-
+  // ── Render table ──────────────────────────────────────────────
   function renderTable() {
     const tbody = document.getElementById('entries-tbody');
     if (entries.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">📋</div><p>No entries yet.</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">📋</div><p>No entries yet. Registrations will appear here.</p></div></td></tr>`;
       updateStats();
       return;
     }
@@ -656,11 +901,24 @@
     document.getElementById('stat-revenue').textContent = `R${rev.toLocaleString()}`;
   }
 
-  function clearAllEntries() {
+  async function clearAllEntries() {
     if (!confirm('Are you sure you want to delete ALL entries? This cannot be undone.')) return;
-    entries = [];
-    saveEntries();
-    renderTable();
+    if (entriesCollection) {
+      try {
+        const snapshot = await entriesCollection.get();
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      } catch (e) {
+        showToast('Error clearing entries.', true);
+        console.error(e);
+        return;
+      }
+    } else {
+      entries = [];
+      localStorage.setItem('golfEntries', JSON.stringify(entries));
+      renderTable();
+    }
     showToast('All entries cleared.');
   }
 
@@ -690,6 +948,7 @@
     showToast('✓ Excel file downloaded!');
   }
 
+  // ── QR Code ───────────────────────────────────────────────────
   let qrInstance = null;
   function generateQR() {
     const url = document.getElementById('qr-url').value.trim();
@@ -717,15 +976,7 @@
     link.click();
   }
 
-  function showTab(tab) {
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('tab-' + tab).classList.add('active');
-    event.target.classList.add('active');
-    if (tab === 'admin') renderTable();
-    if (tab === 'register') buildHoleOptions();
-  }
-
+  // ── Toast ─────────────────────────────────────────────────────
   function showToast(msg, isError) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -734,7 +985,7 @@
     setTimeout(() => t.classList.remove('show'), 3000);
   }
 
-  // Init
+  // ── Init ──────────────────────────────────────────────────────
   buildHoleOptions();
   updateTotal();
 </script>
