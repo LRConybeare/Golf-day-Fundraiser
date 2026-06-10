@@ -10,6 +10,7 @@
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <style>
   :root {
     --green-dark: #1a3a2a;
@@ -596,6 +597,7 @@ const firebaseConfig = {
 
   // ── Firebase init ─────────────────────────────────────────────
   let db = null;
+  let storage = null;
   let entriesCollection = null;
   let firestoreUnsubscribe = null;
   let entries = [];
@@ -603,6 +605,7 @@ const firebaseConfig = {
   try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    storage = firebase.storage();
     entriesCollection = db.collection('golfEntries');
     startLiveListener();
   } catch (e) {
@@ -820,8 +823,27 @@ const firebaseConfig = {
       hole: hole,
       total: total,
       pop: uploadedFile ? uploadedFile.name : 'Not uploaded',
+      popUrl: '',
       date: new Date().toLocaleDateString('en-ZA')
     };
+
+    // Upload proof of payment to Firebase Storage
+    if (uploadedFile && storage) {
+      const submitBtn = document.querySelector('.btn-primary');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Uploading...';
+      try {
+        const ref = storage.ref(`proofs/${entry.id}_${uploadedFile.name}`);
+        await ref.put(uploadedFile);
+        entry.popUrl = await ref.getDownloadURL();
+      } catch (uploadErr) {
+        console.error('File upload error:', uploadErr);
+        showToast('File upload failed. Entry will be saved without the document.', true);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Registration';
+      }
+    }
 
     if (entriesCollection) {
       try {
@@ -895,7 +917,10 @@ const firebaseConfig = {
         <td><span class="badge">${e.fourballs} ball${e.fourballs>1?'s':''}</span></td>
         <td>${e.hole ? `<span class="badge gold">Hole ${e.hole}</span>` : '<span style="color:var(--text-muted);font-size:0.82rem;">—</span>'}</td>
         <td><strong>R${e.total.toLocaleString()}</strong></td>
-        <td style="font-size:0.78rem;color:var(--text-muted);">${e.pop}</td>
+        <td style="font-size:0.78rem;">${e.popUrl
+          ? `<a href="${e.popUrl}" target="_blank" style="color:var(--green-mid);font-weight:600;text-decoration:none;">View ↗</a>`
+          : `<span style="color:var(--text-muted);">${e.pop}</span>`
+        }</td>
         <td style="font-size:0.78rem;color:var(--text-muted);">${e.date}</td>
       </tr>
     `).join('');
