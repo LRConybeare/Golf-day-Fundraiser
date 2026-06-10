@@ -330,14 +330,15 @@
     display: block;
     text-align: center;
     padding: 1.2rem;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     font-family: Arial, sans-serif;
-    color: var(--border);
+    color: var(--text-muted);
     cursor: pointer;
     user-select: none;
     transition: color 0.2s;
+    letter-spacing: 0.04em;
   }
-  .admin-login-link:hover { color: var(--text-muted); }
+  .admin-login-link:hover { color: var(--green-mid); }
 
   @media (max-width: 580px) {
     .field-row { grid-template-columns: 1fr; }
@@ -559,8 +560,8 @@
   </div>
 </div>
 
-<!-- Subtle admin login trigger at page bottom -->
-<div class="admin-login-link" id="admin-login-trigger" onclick="openAdminModal()" title="Admin login">· · ·</div>
+<!-- Admin login link at page bottom -->
+<div class="admin-login-link" id="admin-login-trigger" onclick="openAdminModal()">🔐 Admin Login</div>
 
 <div class="toast" id="toast"></div>
 
