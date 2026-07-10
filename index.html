@@ -810,11 +810,57 @@ const firebaseConfig = {
     document.getElementById('breakdown').textContent = breakdown;
   }
 
-  function fileToBase64(file) {
+  // Compresses an image file using Canvas so its base64 output stays
+  // under targetKB — ensures the Firestore 1MB document limit is never hit.
+  function compressImage(file, targetKB = 680) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result.split(',')[1]);
       reader.onerror = reject;
+      reader.onload = e => {
+        const img = new Image();
+        img.onerror = reject;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let w = img.width, h = img.height;
+          const MAX_DIM = 1800;
+          if (w > MAX_DIM || h > MAX_DIM) {
+            const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          let quality = 0.85;
+          let b64;
+          do {
+            b64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
+            quality = Math.round((quality - 0.1) * 10) / 10;
+          } while (b64.length > targetKB * 1024 && quality > 0.1);
+          resolve(b64);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Returns base64 string ready for Firestore storage.
+  // Images are compressed; PDFs are rejected if too large.
+  async function prepareFileForStorage(file) {
+    if (file.type.startsWith('image/')) {
+      return { b64: await compressImage(file), type: 'image/jpeg' };
+    }
+    // PDF — can't compress; check raw size (680KB raw ≈ 920KB base64, safely under 1MB doc limit)
+    if (file.size > 680 * 1024) {
+      throw new Error(
+        'This PDF is too large to store directly. Please take a screenshot of your proof of payment and upload that instead (JPG or PNG).'
+      );
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => resolve({ b64: reader.result.split(',')[1], type: file.type });
       reader.readAsDataURL(file);
     });
   }
@@ -866,21 +912,23 @@ const firebaseConfig = {
       date: new Date().toLocaleDateString('en-ZA')
     };
 
-    // Convert proof of payment to base64 for storage in Firestore
+    // Compress/validate the proof of payment before storing in Firestore
     if (uploadedFile) {
       const submitBtn = document.querySelector('.btn-primary');
       submitBtn.disabled = true;
       submitBtn.textContent = 'Processing...';
       try {
-        entry.popBase64 = await fileToBase64(uploadedFile);
-        entry.popType = uploadedFile.type;
+        const { b64, type } = await prepareFileForStorage(uploadedFile);
+        entry.popBase64 = b64;
+        entry.popType = type;
       } catch (readErr) {
-        console.error('File read error:', readErr);
-        showToast('Could not read file. Entry will be saved without the document.', true);
-      } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Registration';
+        showToast(readErr.message || 'Could not process file. Please try a different format.', true);
+        return;
       }
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Registration';
     }
 
     if (entriesCollection) {
