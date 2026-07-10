@@ -448,13 +448,20 @@
 
   <div class="section-label">Proof of Payment</div>
   <div class="card">
+    <div style="background:var(--green-pale);border:1px solid #a8d5b5;border-radius:8px;padding:0.85rem 1.1rem;margin-bottom:1rem;font-family:Arial,sans-serif;font-size:0.83rem;color:var(--green-dark);line-height:1.6;">
+      <strong>📋 File size limits:</strong><br>
+      <strong>Images (JPG/PNG):</strong> Any size — automatically compressed to fit.<br>
+      <strong>PDFs:</strong> Maximum 720 KB.<br>
+      <span style="color:var(--text-muted);">If your PDF is too large, open it on your phone or computer, take a screenshot, and upload the screenshot as a JPG or PNG instead.</span>
+    </div>
     <div class="upload-area" id="upload-area">
       <input type="file" id="pop-file" accept="image/*,.pdf" onchange="handleFileUpload(this)">
       <div class="upload-icon">📎</div>
       <p>Click to upload or drag & drop</p>
-      <p>Accepted: JPG, PNG, PDF</p>
+      <p>Accepted: JPG, PNG, PDF (max 720 KB for PDFs)</p>
       <div class="file-name" id="file-name-display"></div>
     </div>
+    <div id="file-size-warning" style="display:none;margin-top:0.6rem;padding:0.7rem 1rem;background:#fdf0f0;border:1px solid #e8b4b4;border-radius:6px;font-family:Arial,sans-serif;font-size:0.82rem;color:#c0392b;line-height:1.5;"></div>
   </div>
 
   <div class="btn-row">
@@ -812,7 +819,7 @@ const firebaseConfig = {
 
   // Compresses an image file using Canvas so its base64 output stays
   // under targetKB — ensures the Firestore 1MB document limit is never hit.
-  function compressImage(file, targetKB = 680) {
+  function compressImage(file, targetKB = 750) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = reject;
@@ -851,10 +858,10 @@ const firebaseConfig = {
     if (file.type.startsWith('image/')) {
       return { b64: await compressImage(file), type: 'image/jpeg' };
     }
-    // PDF — can't compress; check raw size (680KB raw ≈ 920KB base64, safely under 1MB doc limit)
-    if (file.size > 680 * 1024) {
+    // PDF — can't compress; 720KB raw ≈ 984KB base64, safely under Firestore's 1MB doc limit
+    if (file.size > 720 * 1024) {
       throw new Error(
-        'This PDF is too large to store directly. Please take a screenshot of your proof of payment and upload that instead (JPG or PNG).'
+        'This PDF exceeds the 720 KB limit. Please take a screenshot of your proof of payment and upload it as a JPG or PNG instead — screenshots are always accepted regardless of size.'
       );
     }
     return new Promise((resolve, reject) => {
@@ -869,9 +876,22 @@ const firebaseConfig = {
     uploadedFile = input.files[0];
     const area = document.getElementById('upload-area');
     const display = document.getElementById('file-name-display');
-    if (uploadedFile) {
-      area.classList.add('has-file');
-      display.textContent = '✓ ' + uploadedFile.name;
+    const warning = document.getElementById('file-size-warning');
+    warning.style.display = 'none';
+    warning.textContent = '';
+    if (!uploadedFile) return;
+    area.classList.add('has-file');
+    const sizeKB = (uploadedFile.size / 1024).toFixed(0);
+    display.textContent = `✓ ${uploadedFile.name} (${sizeKB} KB)`;
+    // Warn immediately for oversized PDFs so the user knows before submitting
+    if (!uploadedFile.type.startsWith('image/') && uploadedFile.size > 720 * 1024) {
+      warning.style.display = 'block';
+      warning.innerHTML = `⚠️ This PDF is ${sizeKB} KB — over the 720 KB limit and cannot be uploaded.<br>
+        <strong>What to do:</strong> Open your proof of payment, take a screenshot, and upload the screenshot as a JPG or PNG instead. Screenshots are automatically compressed and always accepted.`;
+      area.classList.remove('has-file');
+      display.textContent = '';
+      uploadedFile = null;
+      input.value = '';
     }
   }
 
