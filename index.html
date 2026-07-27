@@ -353,7 +353,7 @@
 
 <div class="header">
   <h1>⛳ Golf Day Registration</h1>
-  <p>Register your 4-ball and sponsor a hole</p>
+  <p>Register your 4-ball, sponsor a hole, or both</p>
 </div>
 
 <div class="tabs">
@@ -390,13 +390,14 @@
 
   <div class="section-label">4-Ball Entries</div>
   <div class="pricing-info">
-    <strong>Pricing:</strong> R3,000 per 4-ball &nbsp;|&nbsp; <strong>Hole Sponsorship:</strong> R3,500 per hole
+    <strong>Pricing:</strong> R3,000 per 4-ball &nbsp;|&nbsp; <strong>Hole Sponsorship:</strong> R3,500 per hole<br>
+    <span style="color:var(--text-muted);font-size:0.83rem;">To sponsor a hole without playing, set the number of 4-balls to 0.</span>
   </div>
   <div class="card">
     <div class="field-row">
       <div class="field">
         <label>Number of 4-Balls <span class="req">*</span></label>
-        <input type="number" id="fourballs" min="1" max="10" value="1" onchange="updateTotal()">
+        <input type="number" id="fourballs" min="0" max="10" value="1" onchange="onFourballsChange()">
       </div>
       <div class="field">
         <label>Total Players</label>
@@ -801,20 +802,33 @@ const firebaseConfig = {
     updateTotal();
   }
 
+  // When fourballs drops to 0, auto-enable hole sponsorship (required).
+  // When fourballs goes above 0, leave sponsorship choice as-is.
+  function onFourballsChange() {
+    const fb = parseInt(document.getElementById('fourballs').value) || 0;
+    if (fb === 0) {
+      document.querySelector('input[name=sponsor][value=yes]').checked = true;
+      toggleSponsor(true);
+    }
+    updateTotal();
+  }
+
   // ── Total ─────────────────────────────────────────────────────
   function updateTotal() {
-    const fb = parseInt(document.getElementById('fourballs').value) || 1;
-    document.getElementById('players-out').value = fb * 4;
+    const fb = parseInt(document.getElementById('fourballs').value);
+    const safeFb = isNaN(fb) ? 0 : Math.max(0, fb);
+    document.getElementById('players-out').value = safeFb * 4 || (safeFb === 0 ? 'Sponsor only' : 0);
     const sponsoring = document.querySelector('input[name=sponsor]:checked')?.value === 'yes';
     const hole = document.getElementById('hole-select').value;
-    let total = fb * FOURBALLS_PRICE;
-    let breakdown = `${fb} × 4-ball @ R${FOURBALLS_PRICE.toLocaleString()}`;
+    let total = safeFb * FOURBALLS_PRICE;
+    let parts = [];
+    if (safeFb > 0) parts.push(`${safeFb} × 4-ball @ R${FOURBALLS_PRICE.toLocaleString()}`);
     if (sponsoring && hole) {
       total += HOLE_PRICE;
-      breakdown += ` + Hole ${hole} sponsorship @ R${HOLE_PRICE.toLocaleString()}`;
+      parts.push(`Hole ${hole} sponsorship @ R${HOLE_PRICE.toLocaleString()}`);
     }
     document.getElementById('total-display').textContent = `R${total.toLocaleString()}`;
-    document.getElementById('breakdown').textContent = breakdown;
+    document.getElementById('breakdown').textContent = parts.length ? parts.join(' + ') : 'No items selected';
   }
 
   // Compresses an image file using Canvas so its base64 output stays
@@ -903,7 +917,11 @@ const firebaseConfig = {
     }
     const email = document.getElementById('email').value;
     if (!/\S+@\S+\.\S+/.test(email)) { showToast('Please enter a valid email address.', true); return false; }
+    const fb = parseInt(document.getElementById('fourballs').value) || 0;
     const sponsoring = document.querySelector('input[name=sponsor]:checked')?.value === 'yes';
+    if (fb === 0 && !sponsoring) {
+      showToast('Please enter at least 1 four-ball, or choose to sponsor a hole.', true); return false;
+    }
     if (sponsoring && !document.getElementById('hole-select').value) {
       showToast('Please select a hole to sponsor.', true); return false;
     }
@@ -913,7 +931,7 @@ const firebaseConfig = {
   // ── Submit ────────────────────────────────────────────────────
   async function submitEntry() {
     if (!validateForm()) return;
-    const fb = parseInt(document.getElementById('fourballs').value) || 1;
+    const fb = parseInt(document.getElementById('fourballs').value) || 0;
     const sponsoring = document.querySelector('input[name=sponsor]:checked')?.value === 'yes';
     const hole = sponsoring ? document.getElementById('hole-select').value : '';
     const total = fb * FOURBALLS_PRICE + (hole ? HOLE_PRICE : 0);
@@ -1027,7 +1045,7 @@ const firebaseConfig = {
         <td><strong>${e.fname} ${e.lname}</strong></td>
         <td>${e.phone}</td>
         <td style="font-size:0.82rem;">${e.email}</td>
-        <td><span class="badge">${e.fourballs} ball${e.fourballs>1?'s':''}</span></td>
+        <td>${e.fourballs > 0 ? `<span class="badge">${e.fourballs} ball${e.fourballs>1?'s':''}</span>` : `<span style="color:var(--text-muted);font-size:0.82rem;">Sponsor only</span>`}</td>
         <td>${e.hole ? `<span class="badge gold">Hole ${e.hole}</span>` : '<span style="color:var(--text-muted);font-size:0.82rem;">—</span>'}</td>
         <td><strong>R${e.total.toLocaleString()}</strong></td>
         <td style="font-size:0.78rem;">${e.popBase64
